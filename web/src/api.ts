@@ -1,0 +1,160 @@
+import { demoVehicles } from './demo-data'
+import type { AboutContent, AdminSession, AdminVehicle, AdminVehicleInput, ContactFields, InquiryForm, LegalContent, ShippingPickupLocation, SiteSettingsContent, TrustedNetworkContent, Vehicle, VehicleSummary } from './types'
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:5141' : '')
+
+export const defaultTrustedNetwork: TrustedNetworkContent = {
+  metrics: [
+    { value: 'Framingham, MA', label: 'Showroom location', detail: 'Visits by appointment' },
+    { value: 'Vehicle-first', label: 'Every listing', detail: 'Specs, photos, and context' },
+    { value: 'Nationwide', label: 'Transport planning', detail: 'Route estimates when needed' },
+    { value: 'Direct', label: 'Framingham support', detail: 'Questions welcomed' },
+  ],
+  eyebrow: 'The Framingham approach',
+  title: 'CLASSICS, CLEARLY PRESENTED',
+  description: 'Framingham Motors keeps the process centered on the vehicle, the details that matter, and a clear next step.',
+  credentials: [
+    { icon: 'licensed', title: 'Vehicle-first listings', detail: 'Available specifications, photos, and context in one place.', status: 'Explore' },
+    { icon: 'authorized', title: 'Details before decisions', detail: 'Use finance and transport planning when you are ready.', status: 'Plan' },
+    { icon: 'certified', title: 'Personal next steps', detail: 'Ask about a vehicle, trade-in, financing, or delivery from one place.', status: 'Connect' },
+  ],
+  partners: [
+    { mark: '01', name: 'Ally', category: 'Finance partner', image: '/partners/ally.svg' },
+    { mark: '02', name: 'Capital One', category: 'Finance partner', image: '/partners/capitalone.svg' },
+    { mark: '03', name: 'Montway', category: 'Transport partner', image: '/partners/montway.svg' },
+    { mark: '04', name: 'AutoTrader', category: 'Marketplace partner', image: '/partners/autotrader.svg' },
+    { mark: '05', name: 'CARFAX', category: 'Vehicle history partner', image: '/partners/carfax.svg' },
+    { mark: '06', name: 'CarShield', category: 'Protection partner', image: '/partners/carshield.svg' },
+  ],
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? error?.title ?? 'Something went wrong. Please try again.')
+  }
+
+  return response.status === 204 ? Promise.resolve(undefined as T) : response.json() as Promise<T>
+}
+
+function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, { credentials: 'include', ...init })
+}
+
+export async function getVehicles(): Promise<VehicleSummary[]> {
+  try {
+    return await request<VehicleSummary[]>('/api/vehicles')
+  } catch {
+    return demoVehicles
+  }
+}
+
+export async function getVehicle(slug: string): Promise<Vehicle> {
+  try {
+    return await request<Vehicle>(`/api/vehicles/${encodeURIComponent(slug)}`)
+  } catch {
+    const vehicle = demoVehicles.find((item) => item.slug === slug)
+    if (!vehicle) throw new Error('This vehicle is no longer available.')
+    return vehicle
+  }
+}
+
+export async function getTrustedNetwork(): Promise<TrustedNetworkContent> {
+  try {
+    return await request<TrustedNetworkContent>('/api/site/trusted-network')
+  } catch {
+    return defaultTrustedNetwork
+  }
+}
+
+export async function getShippingPickup(): Promise<ShippingPickupLocation> {
+  return request<ShippingPickupLocation>('/api/site/shipping-pickup')
+}
+
+export async function getAboutContent(): Promise<AboutContent> {
+  return request<AboutContent>('/api/site/about')
+}
+
+export async function getLegalContent(): Promise<LegalContent> {
+  return request<LegalContent>('/api/site/legal')
+}
+
+export async function getSiteSettings(): Promise<SiteSettingsContent> {
+  return request<SiteSettingsContent>('/api/site/settings')
+}
+
+export async function submitInquiry(inquiry: InquiryForm): Promise<string> {
+  const response = await request<{ message: string }>('/api/inquiries', {
+    method: 'POST',
+    body: JSON.stringify(inquiry),
+  })
+  return response.message
+}
+
+async function submitLead(path: string, body: object): Promise<string> {
+  const response = await request<{ message: string }>(path, { method: 'POST', body: JSON.stringify(body) })
+  return response.message
+}
+
+export function submitFinance(body: ContactFields & { vehiclePrice: number; downPayment: number; interestRate: number; termMonths: number; vehicleName?: string; vehicleVin?: string; vehicleSlug?: string; vehiclePriceLabel?: string }) {
+  return submitLead('/api/leads/finance', body)
+}
+
+export function submitTradeIn(body: ContactFields & { year: number; make: string; model: string; mileage: number; condition: string; message: string }) {
+  return submitLead('/api/leads/trade-in', body)
+}
+
+export function submitDelivery(body: ContactFields & { destination: string; distanceMiles: number; vehicle?: string }) {
+  return submitLead('/api/leads/delivery', body)
+}
+
+export function subscribeVip(body: { email: string; pageUrl: string }) {
+  return submitLead('/api/leads/newsletter', body)
+}
+
+export async function getAdminSession(): Promise<AdminSession> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/auth/me`, { credentials: 'include' })
+  if (response.status === 401) return { authenticated: false }
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? error?.title ?? 'Admin access is temporarily unavailable.')
+  }
+  return response.json() as Promise<AdminSession>
+}
+
+export function adminLogin(password: string) {
+  return adminRequest<AdminSession>('/api/admin/auth/login', { method: 'POST', body: JSON.stringify({ password }) })
+}
+
+export function adminLogout() {
+  return adminRequest<void>('/api/admin/auth/logout', { method: 'POST' })
+}
+
+export function getAdminVehicles() {
+  return adminRequest<AdminVehicle[]>('/api/admin/vehicles')
+}
+
+export function createAdminVehicle(vehicle: AdminVehicleInput) {
+  return adminRequest<AdminVehicle>('/api/admin/vehicles', { method: 'POST', body: JSON.stringify(vehicle) })
+}
+
+export function importAdminVehicles(vehicles: AdminVehicleInput[]) {
+  return adminRequest<AdminVehicle[]>('/api/admin/vehicles/import', { method: 'POST', body: JSON.stringify({ vehicles }) })
+}
+
+export function updateAdminVehicle(id: number, vehicle: AdminVehicleInput) {
+  return adminRequest<AdminVehicle>(`/api/admin/vehicles/${id}`, { method: 'PUT', body: JSON.stringify(vehicle) })
+}
+
+export function deleteAdminVehicle(id: number) {
+  return adminRequest<void>(`/api/admin/vehicles/${id}`, { method: 'DELETE' })
+}
+
+export function setVehiclePublication(id: number, published: boolean) {
+  return adminRequest<void>(`/api/admin/vehicles/${id}/publication`, { method: 'PATCH', body: JSON.stringify({ published }) })
+}

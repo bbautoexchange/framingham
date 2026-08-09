@@ -1,0 +1,67 @@
+import { useEffect, useState } from 'react'
+import { getAboutContent, getSiteSettings, getTrustedNetwork } from './api'
+import type { AboutContent, SiteSettingsContent, TrustedNetworkContent } from './types'
+
+type Props = { go: (href: string) => void }
+const trustIconSources: Record<string, string> = { licensed: '/trust-icons/licensed.svg', authorized: '/trust-icons/authorized.svg', certified: '/trust-icons/certified.svg', '01': '/trust-icons/licensed.svg', '02': '/trust-icons/authorized.svg', '03': '/trust-icons/certified.svg' }
+const contactIconSources: Record<string, string> = { Location: '/contact-icons/location.png', Phone: '/contact-icons/phone.png', Email: '/contact-icons/email.png', Hours: '/contact-icons/hours.png' }
+
+const fallback: AboutContent = {
+  eyebrow: 'Who we are',
+  title: 'ABOUT FRAMINGHAM MOTORS',
+  intro: 'Framingham Motors, Inc. focuses on retro and classic collectible cars, with clear information and a straightforward buying experience.',
+  story: {
+    title: 'Our Story',
+    paragraphs: [
+      'Framingham Motors is for people who value the character, history, and driving feel that make a retro or classic vehicle memorable.',
+      'We keep the focus on thoughtful presentation and the details that help you understand each car before making a decision.',
+      'Every conversation starts with what matters to you: the vehicle, its condition, your timeline, and the right next step.'
+    ],
+    imageCaption: 'The Framingham standard: timeless vehicles and clear details.',
+    licenseTitle: 'Retro and classic vehicle specialists',
+    licenseDetail: 'Vehicle, documentation, and delivery details are reviewed with you before the next step.',
+  },
+  contact: {
+    title: 'Contact & Location', addressLabel: 'Showroom address', address: '865 Waverly St, Framingham, MA 01701', phoneLabel: 'Phone', phone: '(508) 306-8170', phoneDetail: 'Appointments and calls are coordinated directly with the Framingham Motors team.', emailLabel: 'Email', email: 'sales@framinghammotors.com', emailDetail: 'We respond as soon as possible during business hours.', hoursLabel: 'Business hours', hours: 'Monday–Friday: 9:00 AM–6:00 PM\nSaturday: 10:00 AM–4:00 PM\nSunday: By appointment',
+  },
+  stats: [{ value: 'Framingham, MA', label: 'Showroom', detail: 'Visits by appointment' }, { value: 'Nationwide', label: 'Transport planning', detail: 'Route estimates available' }, { value: 'Direct', label: 'Personal support', detail: 'Clear answers at every step' }, { value: 'Detailed', label: 'Vehicle information', detail: 'Condition and history context' }],
+}
+
+function phoneHref(value: string) {
+  const number = value.replace(/[^\d+]/g, '')
+  return number.replace(/\D/g, '').length >= 7 ? `tel:${number}` : undefined
+}
+
+export default function AboutPage({ go }: Props) {
+  const [content, setContent] = useState<AboutContent | null>(null)
+  const [trustedNetwork, setTrustedNetwork] = useState<TrustedNetworkContent | null>(null)
+  const [siteSettings, setSiteSettings] = useState<SiteSettingsContent | null>(null)
+  useEffect(() => { void getAboutContent().then(setContent).catch(() => setContent(fallback)); void getTrustedNetwork().then(setTrustedNetwork); void getSiteSettings().then(setSiteSettings) }, [])
+  if (!content) return <section className="about-loading">Loading the Framingham Motors story…</section>
+  const { story, contact: aboutContact } = content
+  const address = siteSettings?.showroomAddress ?? aboutContact.address
+  const phoneValue = siteSettings?.phone ?? aboutContact.phone
+  const hours = siteSettings?.showroomHours ?? aboutContact.hours
+  const contact = { ...aboutContact, address, phone: phoneValue, hours }
+  const hasMap = Boolean(address.trim()) && !/^contact (framingham motors|b & b auto exchange)/i.test(address.trim())
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+  const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`
+  const phone = phoneHref(phoneValue)
+  const addressLines = address.split(/\n|<br\s*\/?\s*>/i)
+  const credential = trustedNetwork?.credentials[0]
+  const credentialIcon = credential ? trustIconSources[credential.icon.trim().toLowerCase()] : undefined
+
+  return <main className="hollywood-about">
+    <section className="about-hero wrap-wide"><p className="garage-kicker">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
+    <section className="about-main wrap-wide">
+      <article className="about-story"><h2>{story.title}</h2>{story.paragraphs.map((paragraph, index) => <p key={`${index}-${paragraph}`}>{paragraph}</p>)}<figure><img src="/framingham/classic-warehouse.jpg" alt="Classic vehicles at Framingham Motors" loading="lazy" decoding="async" /><figcaption>{story.imageCaption}</figcaption></figure><div className="about-license"><span className="about-license-icon">{credentialIcon ? <img src={credentialIcon} alt="" /> : 'OK'}</span><div><strong>{credential?.title ?? story.licenseTitle}</strong><p>{credential?.detail ?? story.licenseDetail}</p></div><b>{credential?.status ?? 'FOCUSED'}</b></div></article>
+      <aside className="about-contact"><h2>{contact.title}</h2><ContactItem icon="Location" title={contact.addressLabel}><p>{addressLines.map((line, index) => <span key={`${index}-${line}`}>{line}{index < addressLines.length - 1 && <br />}</span>)}</p>{hasMap && <a href={mapsUrl} target="_blank" rel="noreferrer">Open in Google Maps →</a>}</ContactItem><ContactItem icon="Phone" title={contact.phoneLabel}>{phone ? <a href={phone}>{contact.phone}</a> : <p>{contact.phone}</p>}<small>{contact.phoneDetail}</small></ContactItem><ContactItem icon="Email" title={contact.emailLabel}><a href={`mailto:${contact.email}`}>{contact.email}</a><small>{contact.emailDetail}</small></ContactItem><ContactItem icon="Hours" title={contact.hoursLabel}><p>{contact.hours}</p></ContactItem>{(phone || contact.email) && <div className="about-contact-actions">{phone && <a className="amber-button" href={phone}>Call now <span>→</span></a>}<a className="about-email-button" href={`mailto:${contact.email}`}>Email us</a></div>}</aside>
+    </section>
+    <section className="about-map wrap-wide">{hasMap ? <><header><strong>{content.title}</strong><span>{contact.address}</span></header><iframe title={`${content.title} location`} src={mapEmbedUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /></> : <div className="about-map-placeholder">Set your showroom address in Render to display the location map.</div>}</section>
+    <div className="about-browse wrap-wide"><button className="amber-button" onClick={() => go('/inventory')}>Browse the collection <span>→</span></button></div>
+  </main>
+}
+
+function ContactItem({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  return <div className="about-contact-row"><span><img src={contactIconSources[icon]} alt="" /></span><div><strong>{title}</strong>{children}</div></div>
+}
